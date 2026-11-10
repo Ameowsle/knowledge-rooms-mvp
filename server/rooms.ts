@@ -16,15 +16,7 @@ import {
   type Room,
 } from "./db";
 import { allGrants, allowedAis, logAccess, membershipStatus } from "./access";
-import type {
-  AuditInfo,
-  EntryInfo,
-  MemberInfo,
-  MyContribution,
-  Portal,
-  RoomDetail,
-  RoomSummary,
-} from "../shared/types";
+import type { AuditInfo, EntryInfo, MemberInfo, MyContribution, Portal, RoomDetail, RoomSummary } from "../shared/types";
 
 export class AppError extends Error {
   constructor(
@@ -139,11 +131,7 @@ export function invite(
       company = { id: newId(), name: input.company.trim() };
       run("INSERT INTO companies (id, name) VALUES (?, ?)", company.id, company.name);
     }
-    let person = get<Person>(
-      "SELECT * FROM people WHERE lower(name) = lower(?) AND company_id = ?",
-      input.name.trim(),
-      company.id,
-    );
+    let person = get<Person>("SELECT * FROM people WHERE lower(name) = lower(?) AND company_id = ?", input.name.trim(), company.id);
     if (!person) {
       person = {
         id: newId(),
@@ -304,20 +292,18 @@ export function roomDetail(room: Room): RoomDetail {
       ORDER BY (c.id = ?) ASC, c.name, p.name`,
     room.id,
     room.company_id,
-  ).map(
-    (m): MemberInfo => ({
-      id: m.id,
-      name: m.name,
-      title: m.title,
-      company: m.company,
-      isPartner: m.company_id !== room.company_id,
-      roleId: m.role_id,
-      role: m.role,
-      ai: m.ai,
-      accessUntil: m.access_until,
-      status: membershipStatus(m, room),
-    }),
-  );
+  ).map((m): MemberInfo => ({
+    id: m.id,
+    name: m.name,
+    title: m.title,
+    company: m.company,
+    isPartner: m.company_id !== room.company_id,
+    roleId: m.role_id,
+    role: m.role,
+    ai: m.ai,
+    accessUntil: m.access_until,
+    status: membershipStatus(m, room),
+  }));
   const audit = all<AuditInfo>(
     `SELECT a.id, a.at, a.ai, p.name AS person, a.action, a.detail
        FROM audit_log a JOIN people p ON p.id = a.person_id
@@ -380,4 +366,87 @@ export function portal(person: Person, publicUrl: string): Portal {
     })),
     contributions: myContributions(person).map(({ owner: _owner, body: _body, ...c }) => c),
   };
+}
+
+// ---------------------------------------------------------------- changes after the invitation
+
+type MemberRow = Membership & { name: string; token: string };
+
+function memberRow(room: Room, membershipId: string): MemberRow {
+  const m = get<MemberRow>(
+    `SELECT m.*, p.name, p.token FROM memberships m JOIN people p ON p.id = m.person_id
+      WHERE m.id = ? AND m.room_id = ?`,
+    membershipId,
+    room.id,
+  );
+  if (!m) throw new AppError(404, "Member not found");
+  return m;
+}
+
+/** The personal link an admin passes on to a partner, by email or chat. */
+export function inviteLink(room: Room, membershipId: string, publicUrl: string) {
+  const m = memberRow(room, membershipId);
+  return { name: m.name, mcpUrl: `${publicUrl}/mcp/${m.token}` };
+}
+
+/** Change a member's role, AI or end date without inviting them again. */
+export function updateMembership(
+  room: Room,
+  admin: Person,
+  membershipId: string,
+  input: { roleId?: string; ai?: string; accessUntil?: string },
+) {
+  const m = memberRow(room, membershipId);
+  if (m.revoked_at) throw new AppError(409, "Access was revoked. Invite the person again.");
+  const role = get<Role>("SELECT * FROM roles WHERE id = ? AND room_id = ?", input.roleId ?? m.role_id, room.id);
+  if (!role) throw new AppError(400, "Unknown role");
+  const ai = input.ai ?? m.ai;
+  if (!allowedAis(room).includes(ai)) throw new AppError(400, `${ai} is not allowed in this room`);
+  const accessUntil = input.accessUntil ?? m.access_until;
+  if (accessUntil > room.expires_at) throw new AppError(400, `Access cannot outlast the room, which ends on ${room.expires_at}`);
+  run("UPDATE memberships SET role_id = ?, ai = ?, access_until = ? WHERE id = ?", role.id, ai, accessUntil, m.id);
+  logAccess(room.id, admin.id, null, "update", `changed access for ${m.name}: ${role.name}, ${ai}, until ${accessUntil}`);
+}
+
+function approvedEntry(room: Room, entryId: string): Entry {
+  const entry = get<Entry>("SELECT * FROM entries WHERE id = ? AND room_id = ? AND status = 'approved'", entryId, room.id);
+  if (!entry) throw new AppError(404, "Entry not found");
+  return entry;
+}
+
+/** Correct a knowledge entry or move it to another layer. */
+export function updateEntry(room: Room, admin: Person, entryId: string, input: { title?: string; body?: string; layerId?: string }) {
+  const entry = approvedEntry(room, entryId);
+  const layer = get<Layer>("SELECT * FROM layers WHERE id = ? AND room_id = ?", input.layerId ?? entry.layer_id, room.id);
+  if (!layer) throw new AppError(400, "Unknown layer");
+  const title = input.title?.trim() || entry.title;
+  run("UPDATE entries SET title = ?, body = ?, layer_id = ? WHERE id = ?", title, input.body?.trim() || entry.body, layer.id, entry.id);
+  logAccess(room.id, admin.id, null, "save", `edited "${title}" in ${layer.name}`);
+}
+
+/** Remove a knowledge entry. Partner AIs stop receiving it at once. */
+export function deleteEntry(room: Room, admin: Person, entryId: string) {
+  const entry = approvedEntry(room, entryId);
+  run("DELETE FROM entries WHERE id = ?", entry.id);
+  logAccess(room.id, admin.id, null, "remove", `removed "${entry.title}"`);
+}
+
+/** The audit log of the admin's company as CSV, for one room or all of them. */
+export function auditCsv(admin: Person, roomId?: string): string {
+  const rows = all<{ at: string; room: string; person: string; company: string; ai: string | null; action: string; detail: string }>(
+    `SELECT a.at, r.name AS room, p.name AS person, c.name AS company, a.ai, a.action, a.detail
+       FROM audit_log a
+       JOIN rooms r ON r.id = a.room_id
+       JOIN people p ON p.id = a.person_id
+       JOIN companies c ON c.id = p.company_id
+      WHERE r.company_id = ? AND (? IS NULL OR r.id = ?)
+      ORDER BY a.at DESC, a.id DESC`,
+    admin.company_id,
+    roomId ?? null,
+    roomId ?? null,
+  );
+  // Quote every cell; a leading apostrophe stops spreadsheets from running a cell as a formula.
+  const cell = (v: string | null) => `"${(v ?? "").replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`;
+  const lines = rows.map((r) => [r.at, r.room, r.person, r.company, r.ai, r.action, r.detail].map(cell).join(","));
+  return ["time,room,person,company,ai,action,detail", ...lines].join("\r\n") + "\r\n";
 }

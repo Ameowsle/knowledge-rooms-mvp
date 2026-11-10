@@ -21,7 +21,13 @@ import {
   assertOpen,
   deleteRoom,
   reopenProject,
+  auditCsv,
+  deleteEntry,
+  inviteLink,
+  updateEntry,
+  updateMembership,
 } from "./rooms";
+import { resetAndSeed } from "./seed";
 import { AIS, type Me, type PersonOption } from "../shared/types";
 
 export const publicUrl = () => (process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 3001}`).replace(/\/$/, "");
@@ -132,7 +138,59 @@ api.post("/admin/rooms/:id/members", (req, res) => {
     })
     .parse(req.body);
   const person = invite(room, a, input);
-  res.status(201).json({ personId: person.id });
+  const member = get<{ id: string }>("SELECT id FROM memberships WHERE room_id = ? AND person_id = ?", room.id, person.id)!;
+  res.status(201).json({ personId: person.id, memberId: member.id, ...inviteLink(room, member.id, publicUrl()) });
+});
+
+type MemberParams = Request<{ id: string; memberId: string }>;
+type EntryParams = Request<{ id: string; entryId: string }>;
+
+api.get("/admin/rooms/:id/members/:memberId/invite", (req: MemberParams, res) => {
+  res.json(inviteLink(ownedRoom(req).room, req.params.memberId, publicUrl()));
+});
+
+api.patch("/admin/rooms/:id/members/:memberId", (req: MemberParams, res) => {
+  const { room, admin: a } = ownedRoom(req);
+  assertOpen(room);
+  const input = z.object({ roleId: z.string().optional(), ai: z.enum(AIS).optional(), accessUntil: day.optional() }).parse(req.body);
+  updateMembership(room, a, req.params.memberId, input);
+  res.json({ ok: true });
+});
+
+api.patch("/admin/rooms/:id/entries/:entryId", (req: EntryParams, res) => {
+  const { room, admin: a } = ownedRoom(req);
+  assertOpen(room);
+  const text = z.string().trim().min(2).optional();
+  updateEntry(room, a, req.params.entryId, z.object({ title: text, body: text, layerId: z.string().optional() }).parse(req.body));
+  res.json({ ok: true });
+});
+
+api.delete("/admin/rooms/:id/entries/:entryId", (req: EntryParams, res) => {
+  const { room, admin: a } = ownedRoom(req);
+  assertOpen(room);
+  deleteEntry(room, a, req.params.entryId);
+  res.json({ ok: true });
+});
+
+api.get("/admin/audit.csv", (req, res) => {
+  const a = admin(req);
+  const roomId = typeof req.query.room === "string" && req.query.room ? req.query.room : undefined;
+  res.type("text/csv").attachment("bridge-audit-log.csv").send(auditCsv(a, roomId));
+});
+
+/** The reset wipes every company's data, so it exists only when the server is started as a demo. */
+const demoMode = () => process.env.DEMO_MODE === "true";
+
+api.get("/config", (_req, res) => {
+  res.json({ demoMode: demoMode() });
+});
+
+/** Demo only: restore the seeded example. Every account and personal link is recreated. */
+api.post("/admin/reset", (req, res) => {
+  admin(req);
+  if (!demoMode()) throw new AppError(404, "Not found");
+  resetAndSeed();
+  res.json({ ok: true });
 });
 
 api.post("/admin/rooms/:id/members/:memberId/revoke", (req: Request<{ id: string; memberId: string }>, res) => {
@@ -160,9 +218,7 @@ api.delete("/admin/rooms/:id", (req, res) => {
 api.post("/admin/rooms/:id/entries", (req, res) => {
   const { room, admin: a } = ownedRoom(req);
   assertOpen(room);
-  const input = z
-    .object({ layerId: z.string(), title: z.string().trim().min(2), body: z.string().trim().min(2) })
-    .parse(req.body);
+  const input = z.object({ layerId: z.string(), title: z.string().trim().min(2), body: z.string().trim().min(2) }).parse(req.body);
   addEntry(room, a, input);
   res.status(201).json({ ok: true });
 });
@@ -187,7 +243,9 @@ api.post("/my/preview", (req, res) => {
   const grant = findGrant(person, roomId);
   if (!grant) throw new AppError(403, "No active access to this room");
   const results = query.trim() ? search(grant, query) : visibleEntries(grant);
-  const detail = query.trim() ? `searched "${query}" (${results.length} result${results.length === 1 ? "" : "s"})` : `read everything they may see`;
+  const detail = query.trim()
+    ? `searched "${query}" (${results.length} result${results.length === 1 ? "" : "s"})`
+    : `read everything they may see`;
   logAccess(grant.room.id, person.id, "Web portal", query.trim() ? "search" : "read", detail);
   res.json(results);
 });
