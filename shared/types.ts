@@ -19,6 +19,8 @@ export type RoomSummary = {
   id: string;
   name: string;
   expiresAt: string;
+  /** ISO timestamp when the company ended the project, or null while it runs. */
+  endedAt: string | null;
   members: number;
   pending: number;
 };
@@ -60,7 +62,7 @@ export type AuditInfo = {
 };
 
 export type RoomDetail = {
-  room: { id: string; name: string; expiresAt: string; allowedAis: string[]; owner: string };
+  room: { id: string; name: string; expiresAt: string; endedAt: string | null; allowedAis: string[]; owner: string };
   layers: LayerInfo[];
   roles: RoleInfo[];
   members: MemberInfo[];

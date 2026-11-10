@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS rooms (
   name        TEXT NOT NULL,
   expires_at  TEXT NOT NULL, -- YYYY-MM-DD, last day of access
   allowed_ais TEXT NOT NULL, -- JSON array, e.g. ["Claude","Gemini"]
-  created_at  TEXT NOT NULL
+  created_at  TEXT NOT NULL,
+  ended_at    TEXT           -- set when the company ends the project
 );
 
 -- Layers split a room's knowledge by audience ("Catering", "Project leads only").
@@ -98,6 +99,7 @@ export type Room = {
   expires_at: string;
   allowed_ais: string;
   created_at: string;
+  ended_at: string | null;
 };
 export type Layer = { id: string; room_id: string; name: string; position: number };
 export type Role = { id: string; room_id: string; name: string; layer_ids: string };
@@ -130,6 +132,10 @@ if (file !== ":memory:") mkdirSync(path.dirname(file), { recursive: true });
 export const db = new DatabaseSync(file);
 db.exec("PRAGMA foreign_keys = ON;");
 db.exec(SCHEMA);
+// Databases created before projects could be ended lack this column.
+if (!db.prepare("PRAGMA table_info(rooms)").all().some((c) => c.name === "ended_at")) {
+  db.exec("ALTER TABLE rooms ADD COLUMN ended_at TEXT");
+}
 
 export const all = <T>(sql: string, ...params: SQLInputValue[]) =>
   db.prepare(sql).all(...params) as unknown as T[];

@@ -1,4 +1,4 @@
-// Demo data: the Berger AG example from our product doc. All names are made up.
+// Demo data: the Talberg Software example from the pitch deck and validation log. All names are made up.
 import { get, newId, newToken, run, transaction } from "./db";
 import { today } from "./access";
 
@@ -107,81 +107,151 @@ function seed() {
       hoursAgo(ageHours),
     );
 
-  const berger = company("Berger AG");
-  const festwerk = company("Festwerk");
-  const huber = company("Huber Catering");
-  const baumann = company("Studio Baumann");
+  // Customer: Talberg Software builds a customer portal with external partners.
+  const talberg = company("Talberg Software");
+  const nordwind = company("Nordwind Software");
+  const kellerDesign = company("Keller Design");
+  const alpen = company("Alpen Audit AG");
   const pixelwerk = company("Pixelwerk");
-  const kranich = company("Design studio Kranich");
-  const keller = company("Keller family");
+  const kranich = company("Studio Kranich");
+  const lindenhof = company("Lindenhof Bank");
 
-  const petra = person("Petra Meier", "HR", berger, true);
-  const jonas = person("Jonas Weber", "Marketing", berger);
-  const anna = person("Anna Frei", "Project lead", festwerk);
-  const luca = person("Luca Rossi", "Event planner", festwerk);
-  const ben = person("Ben Huber", "Chef", huber);
-  const kim = person("Kim Baumann", "Photographer", baumann);
-  const mia = person("Mia Schmid", "Web developer", pixelwerk);
-  const noah = person("Noah Brunner", "Designer", kranich);
-  const sandra = person("Sandra Keller", "Bride", keller, true);
+  const sandra = person("Sandra Meier", "CTO", talberg, true);
+  const jonas = person("Jonas Weber", "Head of Product", talberg);
+  const marco = person("Marco Rossi", "Developer", nordwind);
+  const lena = person("Lena Keller", "Freelance designer", kellerDesign);
+  const daniel = person("Daniel Brunner", "IT auditor", alpen);
+  const mia = person("Mia Schmid", "Developer", pixelwerk);
+  const noah = person("Noah Frei", "Designer", kranich);
+  const peter = person("Peter Graf", "Head of IT", lindenhof, true);
 
-  // Berger AG: 100th anniversary with Festwerk, a caterer and a photographer
-  const anniversary = room(berger, "100th Anniversary", 41, ["Claude", "ChatGPT", "Gemini", "Copilot"], 300);
-  const [everyone, catering, leads] = layers(anniversary, ["Everyone in the room", "Catering", "Project leads only"]);
-  const lead = role(anniversary, "Project lead", [everyone, catering, leads]);
-  const cateringRole = role(anniversary, "Catering", [everyone, catering]);
-  const everyoneRole = role(anniversary, "Everyone", [everyone]);
-  member(anniversary, anna, lead, "Claude", 41);
-  member(anniversary, luca, cateringRole, "ChatGPT", 41);
-  member(anniversary, ben, cateringRole, "Gemini", 41);
-  member(anniversary, kim, everyoneRole, "Claude", 41);
-  member(anniversary, petra, lead, "Copilot", 41);
-  member(anniversary, jonas, everyoneRole, "ChatGPT", 41);
+  // Talberg Software: customer portal with a software house, a freelance designer and an auditor
+  const portal = room(talberg, "Customer portal", 141, ["Claude", "ChatGPT", "Copilot"], 300);
+  const [standards, design, customerData] = layers(portal, ["Development standards", "Design rules", "Customer data"]);
+  const lead = role(portal, "Project lead", [standards, design, customerData]);
+  const developer = role(portal, "Developer", [standards]);
+  const designer = role(portal, "Designer", [design]);
+  const auditor = role(portal, "Auditor", [standards]);
+  member(portal, marco, developer, "Claude", 141);
+  member(portal, lena, designer, "ChatGPT", 141);
+  member(portal, daniel, auditor, "Copilot", 5);
+  member(portal, sandra, lead, "Copilot", 141);
+  member(portal, jonas, lead, "ChatGPT", 141);
 
-  entry(anniversary, everyone, anna, "Schedule", "17:00 doors open, 18:00 speech by the CEO, 19:00 dinner, 21:00 party with live band, 01:00 end.", 120);
-  entry(anniversary, everyone, anna, "Venue", "Seehalle, Seestrasse 12, Thalwil. Capacity 300. Loading dock at the back, open from 14:00.", 118);
-  entry(anniversary, everyone, jonas, "Logo and colors", "Use the anniversary logo \"100 years Berger\". Colors: cocoa brown #4A2C2A and gold #C9A227. Font: Berger Sans only.", 110);
-  entry(anniversary, catering, petra, "Guest count", "250 guests confirmed: employees, partners and their families.", 100);
-  entry(anniversary, catering, petra, "Allergies", "12 guests have a nut allergy. 4 guests are vegetarian, 2 vegan. As a chocolate factory we label every dessert.", 99);
-  entry(anniversary, catering, ben, "Menu (first draft)", "Starter: pumpkin soup. Main: veal with rösti or vegetable risotto. Dessert: Berger chocolate mousse.", 80, { approvedBy: petra });
-  entry(anniversary, catering, ben, "Delivery times", "Catering team arrives 15:00, hot food is delivered 18:30, dessert is served 20:30.", 30, { approvedBy: petra });
-  entry(anniversary, leads, petra, "Budget", "Total budget CHF 80,000. Catering max CHF 32,000, venue CHF 15,000, band CHF 8,000.", 98);
-  entry(anniversary, leads, petra, "Guest list with names", "The guest list with names lives in the HR system. Seating plan is final two weeks before the event. Changes go through Petra.", 97);
-  entry(anniversary, catering, ben, "Adjusted menu, 12 nut-free dishes", "Starter and main are nut-free for everyone. Dessert: chocolate mousse for 238 guests; 12 nut-free portions with fruit sorbet, prepared separately and marked with a green card.", 2, PENDING);
-  entry(anniversary, everyone, anna, "Supplier list with 8 contacts", "Sound: Tonwerk. Light: Lumen AG. Flowers: Blumen Graf. Furniture: Eventmobil. Security: Secura. Shuttle: Seebus. Photo booth: Snapbox. Cleaning: Rein & Co.", 3, PENDING);
+  entry(
+    portal,
+    standards,
+    sandra,
+    "Test data",
+    "Test only with anonymised data from /testdata. Real customer data is personal data and may not leave Talberg's systems. Decision by Sandra Meier, CTO.",
+    640,
+  );
+  entry(
+    portal,
+    standards,
+    sandra,
+    "SAP access",
+    "No direct SAP queries. Read and write only through API v2. Decision by Sandra Meier, CTO.",
+    630,
+  );
+  entry(
+    portal,
+    standards,
+    sandra,
+    "Branching and reviews",
+    "Trunk based development with short lived branches. Every pull request needs one Talberg reviewer before merge.",
+    620,
+  );
+  entry(
+    portal,
+    standards,
+    marco,
+    "Signup flow",
+    "The new signup form posts to /signup/v2. Email verification is required before the first login.",
+    80,
+    { approvedBy: sandra },
+  );
+  entry(
+    portal,
+    design,
+    jonas,
+    "Design tokens",
+    "Use the Talberg tokens from the shared library: 8 px spacing grid, Inter for all text, primary colour #0B5FFF.",
+    600,
+  );
+  entry(
+    portal,
+    design,
+    jonas,
+    "Accessibility",
+    "WCAG 2.2 AA is required. Minimum contrast 4.5:1 and every form field has a visible label.",
+    590,
+  );
+  entry(
+    portal,
+    customerData,
+    sandra,
+    "Production access",
+    "Only Talberg employees may access production. Partners work on the staging environment.",
+    610,
+  );
+  entry(
+    portal,
+    customerData,
+    sandra,
+    "Customer export",
+    "The monthly customer export holds names and emails of about 1,240 customers. It stays in Talberg's systems.",
+    605,
+  );
+  entry(
+    portal,
+    standards,
+    marco,
+    "Signup API rate limit",
+    "The signup API allows 100 requests a minute. Run bulk test imports at night.",
+    2,
+    PENDING,
+  );
 
-  audit(anniversary, petra, null, "approved", 'approved "Delivery times" into Catering', 29);
-  audit(anniversary, anna, "Claude", "suggested", 'suggested "Supplier list with 8 contacts" for Everyone in the room', 3);
-  audit(anniversary, kim, "Claude", "read", "read Everyone in the room (3 entries)", 2.8);
-  audit(anniversary, ben, "Gemini", "search", 'searched "nut-free meals" (2 results)', 2.1);
-  audit(anniversary, ben, "Gemini", "suggested", 'suggested "Adjusted menu, 12 nut-free dishes" for Catering', 2);
+  audit(portal, sandra, null, "approved", 'approved "Signup flow" into Development standards', 79);
+  audit(portal, daniel, "Copilot", "read", "read Development standards (4 entries)", 5);
+  audit(portal, marco, "Cursor", "denied", "was denied (search): Cursor is not allowed", 2.6);
+  audit(portal, marco, "Claude", "search", 'searched "test data" (1 result)', 2.1);
+  audit(portal, marco, "Claude", "suggested", 'suggested "Signup API rate limit" for Development standards', 2);
 
-  // Berger AG: two more projects with other partners
-  const website = room(berger, "New website", 90, ["Claude", "ChatGPT", "Copilot", "Cursor"], 250);
-  const [webEveryone, webLeads] = layers(website, ["Everyone in the room", "Project leads only"]);
-  const webLead = role(website, "Project lead", [webEveryone, webLeads]);
-  const webEveryoneRole = role(website, "Everyone", [webEveryone]);
-  member(website, petra, webLead, "Copilot", 90);
-  member(website, jonas, webLead, "ChatGPT", 90);
-  member(website, mia, webEveryoneRole, "Cursor", 90);
-  entry(website, webEveryone, jonas, "Brand voice", "Warm, Swiss, crafted. We say \"chocolate makers\", never \"factory workers\". Short sentences.", 90);
-  entry(website, webLeads, petra, "Launch budget", "CHF 45,000 including hosting for the first year.", 89);
+  // Talberg Software: two more projects with other partners
+  const dashboard = room(talberg, "Admin dashboard", 90, ["Claude", "ChatGPT", "Copilot", "Cursor"], 250);
+  const [dashStandards, dashInternal] = layers(dashboard, ["Development standards", "Internal notes"]);
+  const dashLead = role(dashboard, "Project lead", [dashStandards, dashInternal]);
+  const dashDeveloper = role(dashboard, "Developer", [dashStandards]);
+  member(dashboard, sandra, dashLead, "Copilot", 90);
+  member(dashboard, jonas, dashLead, "ChatGPT", 90);
+  member(dashboard, mia, dashDeveloper, "Cursor", 90);
+  entry(
+    dashboard,
+    dashStandards,
+    sandra,
+    "Stack",
+    "React with TypeScript, charts with the shared chart library. No new dependencies without a Talberg review.",
+    90,
+  );
+  entry(dashboard, dashInternal, sandra, "Budget", "CHF 45,000 until the first release.", 89);
 
-  const packaging = room(berger, "New packaging", 60, ["Claude", "ChatGPT", "Copilot"], 200);
-  const [packEveryone, packLeads] = layers(packaging, ["Everyone in the room", "Project leads only"]);
-  const packLead = role(packaging, "Project lead", [packEveryone, packLeads]);
-  const packEveryoneRole = role(packaging, "Everyone", [packEveryone]);
-  member(packaging, petra, packLead, "Copilot", 60);
-  member(packaging, noah, packEveryoneRole, "Claude", 60);
-  entry(packaging, packEveryone, jonas, "Packaging rules", "Recycled cardboard only. Allergen icons on the front. Logo at least 20 mm wide.", 70);
+  const mobile = room(talberg, "Mobile app", 60, ["Claude", "ChatGPT", "Copilot"], 200);
+  const [mobDesign, mobInternal] = layers(mobile, ["Design rules", "Internal notes"]);
+  const mobLead = role(mobile, "Project lead", [mobDesign, mobInternal]);
+  const mobDesigner = role(mobile, "Designer", [mobDesign]);
+  member(mobile, sandra, mobLead, "Copilot", 60);
+  member(mobile, noah, mobDesigner, "Claude", 60);
+  entry(mobile, mobDesign, jonas, "Navigation", "Bottom tab bar with four tabs. Follow the platform guidelines for iOS and Android.", 70);
 
-  // Another customer: Ben works for the Keller family too. Rooms stay separate.
-  const wedding = room(keller, "Wedding", 53, ["Claude", "ChatGPT", "Gemini"], 150);
-  const [wedEveryone, wedCatering] = layers(wedding, ["Everyone in the room", "Catering"]);
-  const wedLead = role(wedding, "Project lead", [wedEveryone, wedCatering]);
-  const wedCateringRole = role(wedding, "Catering", [wedEveryone, wedCatering]);
-  member(wedding, sandra, wedLead, "ChatGPT", 53);
-  member(wedding, ben, wedCateringRole, "Gemini", 53);
-  entry(wedding, wedEveryone, sandra, "Date and place", "Wedding at Schloss Au, 80 guests, ceremony 14:00, dinner 18:00.", 60);
-  entry(wedding, wedCatering, sandra, "Diets", "3 vegan guests, 1 gluten free. No fish.", 59);
+  // Another customer: Marco works for Lindenhof Bank too. Rooms stay separate.
+  const banking = room(lindenhof, "Mobile banking", 53, ["Claude", "ChatGPT", "Copilot"], 150);
+  const [bankStandards, bankSecurity] = layers(banking, ["Development standards", "Security rules"]);
+  const bankLead = role(banking, "Project lead", [bankStandards, bankSecurity]);
+  const bankDeveloper = role(banking, "Developer", [bankStandards, bankSecurity]);
+  member(banking, peter, bankLead, "ChatGPT", 53);
+  member(banking, marco, bankDeveloper, "Claude", 53);
+  entry(banking, bankStandards, peter, "Release train", "Releases every second Tuesday. Code freeze on the Friday before.", 60);
+  entry(banking, bankSecurity, peter, "Secrets", "No secrets in the repository. All keys come from the bank's vault.", 59);
 }

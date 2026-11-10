@@ -1,119 +1,83 @@
-import { useCallback, useEffect, useState } from "react";
-import { AIS, type RoomSummary } from "../../shared/types";
+import { useState } from "react";
+import { AIS } from "../../shared/types";
 import { api } from "./api";
-import { RoomDetailView } from "./RoomDetail";
-import { Button, ErrorNote, Field, fmtDay, input } from "./ui";
+import { Button, ErrorNote, Field, input, loadRoomDefaults } from "./ui";
 
 const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 
-export function AdminView() {
-  const [rooms, setRooms] = useState<RoomSummary[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-
-  const load = useCallback(
-    () =>
-      api<RoomSummary[]>("/admin/rooms").then((list) => {
-        setRooms(list);
-        setSelected((s) => s ?? list[0]?.id ?? null);
-      }),
-    [],
-  );
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  return (
-    <div className="grid gap-6 md:grid-cols-[220px_1fr]">
-      <aside>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-500">Rooms</h2>
-        <ul className="space-y-1">
-          {rooms.map((r) => (
-            <li key={r.id}>
-              <button
-                onClick={() => {
-                  setSelected(r.id);
-                  setCreating(false);
-                }}
-                className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                  selected === r.id && !creating
-                    ? "border-blue-300 bg-blue-50"
-                    : "border-transparent hover:bg-white"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{r.name}</span>
-                  {r.pending > 0 && (
-                    <span className="rounded-full bg-amber-100 px-1.5 text-xs text-amber-800">{r.pending}</span>
-                  )}
-                </div>
-                <div className="text-xs text-stone-500">
-                  {r.members} people · until {fmtDay(r.expiresAt)}
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <Button className="mt-3 w-full" onClick={() => setCreating(true)}>
-          + New room
-        </Button>
-      </aside>
-
-      <div className="min-w-0 rounded-lg border border-stone-200 bg-white p-6">
-        {creating ? (
-          <NewRoom
-            onCreated={(id) => {
-              setCreating(false);
-              setSelected(id);
-              load();
-            }}
-          />
-        ) : selected ? (
-          <RoomDetailView key={selected} roomId={selected} onChange={load} />
-        ) : (
-          <p className="text-stone-500">No rooms yet. Create one for your first project with partners.</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function NewRoom({ onCreated }: { onCreated: (id: string) => void }) {
+export function NewRoom({ onCreated }: { onCreated: (id: string) => void }) {
+  const [defaults] = useState(loadRoomDefaults);
   const [name, setName] = useState("");
-  const [expiresAt, setExpiresAt] = useState(inDays(60));
-  const [allowed, setAllowed] = useState<string[]>(["Claude", "ChatGPT", "Copilot"]);
+  const [expiresAt, setExpiresAt] = useState(inDays(defaults.days));
+  const [allowed, setAllowed] = useState<string[]>(defaults.allowedAis);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      const { id } = await api<{ id: string }>("/admin/rooms", { body: { name, expiresAt, allowedAis: allowed } });
+      const { id } = await api<{ id: string }>("/admin/rooms", {
+        body: { name, expiresAt, allowedAis: allowed },
+      });
       onCreated(id);
     } catch (err) {
       setError((err as Error).message);
     }
   }
 
+  const steps = [
+    ["Add layers by role", "Split the room, for example Development standards, Design rules and Customer data."],
+    ["Invite partners", "Each partner gets one personal link for the AI they already use."],
+    ["Stay in control", "Approve what their AIs suggest and see every read in the audit log."],
+  ];
+
   return (
-    <form onSubmit={submit} className="max-w-md space-y-4">
-      <h1 className="text-xl font-semibold">New room</h1>
-      <p className="text-sm text-stone-500">
-        One room per project with external partners. It starts with two layers: "Everyone in the room" and "Project
-        leads only". You can add more, e.g. "Catering".
-      </p>
-      <Field label="Project name">
-        <input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Summer event" required />
-      </Field>
-      <Field label="Access ends on">
-        <input className={input} type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} required />
-      </Field>
-      <AiPicker value={allowed} onChange={setAllowed} />
-      <Button variant="primary" type="submit">
-        Create room
-      </Button>
-      <ErrorNote error={error} />
-    </form>
+    <div className="grid max-w-4xl gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <form onSubmit={submit} className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">New room</h1>
+          <p className="mt-1 text-sm text-muted">One room per project with external partners.</p>
+        </div>
+        <div className="space-y-5 rounded-xl border border-line bg-white p-5">
+          <Field label="Project name">
+            <input
+              className={input}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Customer portal"
+              autoFocus
+              required
+            />
+          </Field>
+          <Field label="Access ends on">
+            <input className={`${input} !w-48`} type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} required />
+          </Field>
+          <AiPicker value={allowed} onChange={setAllowed} />
+        </div>
+        <Button variant="primary" type="submit">
+          Create room
+        </Button>
+        <ErrorNote error={error} />
+      </form>
+
+      <aside className="rounded-xl bg-sage-50 p-5 lg:mt-[4.25rem]">
+        <h2 className="text-sm font-bold">What happens next</h2>
+        <ol className="mt-3 space-y-4">
+          {steps.map(([title, text], i) => (
+            <li key={title} className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-bridge-900 text-xs font-bold text-white">
+                {i + 1}
+              </span>
+              <span className="text-sm">
+                <span className="block font-bold">{title}</span>
+                <span className="text-stone-600">{text}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-4 text-xs text-muted">A new room starts with the layers "Everyone in the room" and "Project leads only".</p>
+      </aside>
+    </div>
   );
 }
 
@@ -126,6 +90,7 @@ export function AiPicker({ value, onChange }: { value: string[]; onChange: (v: s
           <label key={ai} className="flex items-center gap-1.5 text-sm">
             <input
               type="checkbox"
+              className="accent-bridge-900"
               checked={value.includes(ai)}
               onChange={(e) => onChange(e.target.checked ? [...value, ai] : value.filter((a) => a !== ai))}
             />

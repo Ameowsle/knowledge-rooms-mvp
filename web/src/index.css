@@ -1,6 +1,112 @@
 @import "tailwindcss";
 
+/* Bridge brand tokens, taken from the pitch deck mockups. */
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --color-owner: #e8663d;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --color-bridge-900: #0e3b2e;
+  --color-bridge-700: #1d4d3f;
+  --color-sage-400: #a3b8a1;
+  --color-sage-200: #dce5da;
+  --color-sage-100: #e8eee7;
+  --color-sage-50: #f4f6f3;
+  --color-cream: #faf9f5;
+  --color-ink: #1a1a1a;
+  --color-line: #e3e6e1;
+  --color-blocked: #b42318;
+  /* Secondary text: tinted from the brand green, 4.5:1 or better on every surface we use. */
+  --color-muted: #5f6b64;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --color-owner: #0e3b2e;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+select,
+[role="tab"] {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-bridge-700);
+  outline-offset: 2px;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise-in {
+  animation: rise-in 240ms var(--ease-out-expo);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise-in {
+    animation: none;
+  }
+}
+
+/* Browser surfaces, themed from the palette. */
+::selection {
+  background: var(--color-sage-200);
+  color: var(--color-bridge-900);
+}
+html {
+  caret-color: var(--color-bridge-900);
+  scrollbar-color: var(--color-sage-400) transparent;
+  scrollbar-width: thin;
+  accent-color: var(--color-bridge-900);
+}
+::placeholder {
+  color: var(--color-muted);
+  opacity: 0.8;
+}
+a,
+.hover\:underline:hover {
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+h1,
+h2 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+/* Dates, times and counts line up in lists. */
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop-in {
+  transform-origin: top right;
+  animation: pop-in 200ms var(--ease-out-expo);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop-in {
+    animation: none;
+  }
 }

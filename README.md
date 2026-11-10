@@ -1,6 +1,6 @@
-# Knowledge Rooms (MVP)
+# Bridge (MVP)
 
-**Your knowledge. Their AI. Your control.**
+**Shared, not exposed.**
 
 The controlled channel between a company and the AIs of its external partners, in both directions:
 
@@ -8,7 +8,7 @@ The controlled channel between a company and the AIs of its external partners, i
 2. **Pull back:** partners build on it with their own AI (Claude, ChatGPT, Gemini, Copilot, Cursor). New knowledge is suggested to the room and belongs to the company after approval.
 3. **Control:** allowed AIs, expiry dates, one click revocation and an audit log of which AI read what.
 
-"Knowledge Rooms" is a working title. The demo data is the Berger AG example from our product doc; all names are made up.
+The demo data is the Talberg Software example from the pitch deck and validation log; all names are made up. The repository and the MCP server name still use the working title "knowledge-rooms".
 
 ## Quick start
 
@@ -26,15 +26,15 @@ Demo data is created on first start. `npm run reset` restores it.
 
 ## Demo in five minutes
 
-1. Open the web app and log in as **Petra Meier (Berger AG)**. Room "100th Anniversary": people and roles, suggestions to approve, knowledge by layer, audit log.
-2. Switch to **Ben Huber (Huber Catering)**. The partner portal shows his rooms (Berger AG and Keller family, kept separate) and his personal MCP link.
+1. Open the web app. On the sign in page choose **Company** and sign in as **Sandra Meier (CTO, Talberg Software)**. Room "Customer portal": layers by role, partners, suggestions to approve, audit log. Settings lets you rename the room, change the expiry date and the allowed AIs.
+2. Use **Switch**, choose **Invited partner** and open the portal as **Marco Rossi (Nordwind Software)**. The partner portal shows his rooms (Talberg Software and Lindenhof Bank, kept separate) and his personal MCP link.
 3. Connect an AI, e.g. Claude Code:
    ```bash
-   claude mcp add --transport http knowledge-rooms http://localhost:3001/mcp/<Ben's token>
+   claude mcp add --transport http knowledge-rooms http://localhost:3001/mcp/<Marco's token>
    ```
-4. Ask: *"How many nut-free meals do I need for the Berger anniversary?"* The AI answers 12, with Petra as the source. Ask about the budget: Ben's AI cannot see it.
-5. Say: *"Save the adjusted dessert plan to the room."* The AI asks first, then creates a suggestion.
-6. Back as Petra: approve it (optionally into another layer), see the reads in the audit log, then **End project**. Ben's AI loses access immediately.
+4. Ask: *"Can I test the new signup form with real customer data?"* The AI answers no, only anonymised data, with Sandra as the source. Ask about the customer export: Marco's AI cannot see it.
+5. Say: *"Save what we learned about the rate limit to the room."* The AI asks first, then creates a suggestion.
+6. Back as Sandra: approve it (optionally into another layer), see the reads in the audit log, then **End project**. Marco's AI loses access immediately.
 
 No AI at hand? Use **Preview: what your AI sees** in the partner portal; it runs the same access rules.
 
@@ -58,7 +58,7 @@ server/
   mcp.ts         MCP connector for the AIs (/mcp/<token>)
   api.ts         JSON API for the web app (/api)
   db.ts          SQLite schema and helpers
-  seed.ts        Berger AG demo data
+  seed.ts        Talberg Software demo data
   access.test.ts tests for the rules
 shared/types.ts  payload types used by server and web app
 web/src/         React web app (admin view and partner portal)
