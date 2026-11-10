@@ -6,7 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { get, type Person } from "./db";
+import type { Person } from "./db";
 import {
   activeGrants,
   aiDenied,
@@ -19,7 +19,7 @@ import {
   visibleEntries,
   type Grant,
 } from "./access";
-import { myContributions } from "./rooms";
+import { myContributions, resolveLink } from "./rooms";
 import type { EntryView } from "../shared/types";
 
 const INSTRUCTIONS = `You are connected to Knowledge Rooms: shared project knowledge from the companies this user works with.
@@ -35,14 +35,16 @@ const formatEntries = (grant: Grant, entries: EntryView[]) =>
     .map((e) => `### ${e.title}\n[${e.layer}]\n${e.body}\nSource: ${e.source}, room "${grant.room.name}", ${e.date}`)
     .join("\n\n");
 
-function buildServer(person: Person): McpServer {
+/** `roomId` limits the connection to one room: set when the AI connects through an invitation link. */
+function buildServer(person: Person, roomId?: string): McpServer {
   const server = new McpServer({ name: "knowledge-rooms", version: "0.1.0" }, { instructions: INSTRUCTIONS });
 
   // The AI is detected from the MCP client name; unknown clients fall back to the AI set on the membership.
   const aiFor = (grant: Grant) => detectAi(server.server.getClientVersion()?.name) ?? grant.membership.ai;
 
   function open(roomRef: string, action: string): { grant: Grant; ai: string } | { error: string } {
-    const grant = findGrant(person, roomRef);
+    const found = findGrant(person, roomRef);
+    const grant = found && (!roomId || found.room.id === roomId) ? found : undefined;
     if (!grant) return { error: `No access to room "${roomRef}". Call list_rooms to see the rooms you can use.` };
     const ai = aiFor(grant);
     const denied = aiDenied(grant, ai);
@@ -62,7 +64,7 @@ function buildServer(person: Person): McpServer {
       annotations: { readOnlyHint: true },
     },
     async () => {
-      const grants = activeGrants(person);
+      const grants = activeGrants(person).filter((g) => !roomId || g.room.id === roomId);
       if (grants.length === 0) return text("You currently have no active rooms.");
       return text(
         grants
@@ -160,7 +162,7 @@ function buildServer(person: Person): McpServer {
       annotations: { readOnlyHint: true },
     },
     async () => {
-      const mine = myContributions(person);
+      const mine = myContributions(person, roomId);
       if (mine.length === 0) return text("You have not saved or suggested anything yet.");
       return text(mine.map((c) => `- ${c.title} | ${c.room} (${c.owner}) | ${c.layer} | ${c.status}`).join("\n"));
     },
@@ -171,43 +173,45 @@ function buildServer(person: Person): McpServer {
 
 // ---------------------------------------------------------------- transport
 
-type Session = { transport: StreamableHTTPServerTransport; personId: string };
+type Session = { transport: StreamableHTTPServerTransport; personId: string; token: string };
 const sessions = new Map<string, Session>();
 
 const rpcError = (message: string) => ({ jsonrpc: "2.0", error: { code: -32000, message }, id: null });
 
-const personByToken = (token: string) => get<Person>("SELECT * FROM people WHERE token = ?", token);
 
 export const mcpRouter = Router();
 
 mcpRouter.post("/:token", async (req: Request<{ token: string }>, res: Response) => {
-  const person = personByToken(req.params.token);
-  if (!person) return void res.status(401).json(rpcError("Unknown connection link"));
+  const link = resolveLink(req.params.token);
+  if (!link) return void res.status(401).json(rpcError("Unknown connection link"));
+  const { person, roomId } = link;
 
   const sessionId = req.header("mcp-session-id");
   if (sessionId) {
     const session = sessions.get(sessionId);
     // 404 tells the client to start a new session (e.g. after a server restart).
-    if (!session || session.personId !== person.id) return void res.status(404).json(rpcError("Session not found"));
+    // A session stays tied to the link that opened it, so a room link cannot reuse a wider session.
+    if (!session || session.token !== req.params.token) return void res.status(404).json(rpcError("Session not found"));
     return void (await session.transport.handleRequest(req, res, req.body));
   }
   if (!isInitializeRequest(req.body)) return void res.status(400).json(rpcError("Initialize a session first"));
 
   const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
-    onsessioninitialized: (id) => void sessions.set(id, { transport, personId: person.id }),
+    onsessioninitialized: (id) => void sessions.set(id, { transport, personId: person.id, token: req.params.token }),
   });
   transport.onclose = () => {
     if (transport.sessionId) sessions.delete(transport.sessionId);
   };
-  await buildServer(person).connect(transport);
+  await buildServer(person, roomId).connect(transport);
   await transport.handleRequest(req, res, req.body);
 });
 
 async function sessionRequest(req: Request<{ token: string }>, res: Response) {
-  const person = personByToken(req.params.token);
   const session = sessions.get(req.header("mcp-session-id") ?? "");
-  if (!person || !session || session.personId !== person.id) return void res.status(404).json(rpcError("Session not found"));
+  if (!resolveLink(req.params.token) || !session || session.token !== req.params.token) {
+    return void res.status(404).json(rpcError("Session not found"));
+  }
   await session.transport.handleRequest(req, res);
 }
 

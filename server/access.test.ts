@@ -148,7 +148,16 @@ test("access and knowledge can be changed after the invitation", () => {
   rooms.deleteEntry(r, sandra, tokens.id);
   assert.ok(!titles(access.visibleEntries(portal("Marco Rossi"))).includes("Design tokens"));
 
-  assert.match(rooms.inviteLink(r, marco.id, "https://bridge.example").mcpUrl, /^https:\/\/bridge\.example\/mcp\/.+/);
+  const { mcpUrl } = rooms.inviteLink(r, marco.id, "https://bridge.example");
+  assert.match(mcpUrl, /^https:\/\/bridge\.example\/mcp\/.+/);
+  assert.equal(rooms.inviteLink(r, marco.id, "https://bridge.example").mcpUrl, mcpUrl, "the link stays the same");
+
+  // The link an admin sees opens this room only, never the partner's rooms at other companies.
+  const token = mcpUrl.split("/mcp/")[1];
+  assert.notEqual(token, person("Marco Rossi").token);
+  assert.deepEqual(rooms.resolveLink(token), { person: person("Marco Rossi"), roomId: r.id });
+  assert.equal(rooms.resolveLink(person("Marco Rossi").token)!.roomId, undefined, "the partner's own link covers all their rooms");
+  assert.equal(rooms.resolveLink("not-a-token"), undefined);
 });
 
 test("the audit log exports as CSV for the own company only", () => {
