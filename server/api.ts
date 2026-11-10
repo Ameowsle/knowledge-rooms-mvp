@@ -18,6 +18,9 @@ import {
   roomDetail,
   roomSummaries,
   updateRoom,
+  assertOpen,
+  deleteRoom,
+  reopenProject,
 } from "./rooms";
 import { AIS, type Me, type PersonOption } from "../shared/types";
 
@@ -110,12 +113,14 @@ api.patch("/admin/rooms/:id", (req, res) => {
 
 api.post("/admin/rooms/:id/layers", (req, res) => {
   const { room } = ownedRoom(req);
+  assertOpen(room);
   const { name } = z.object({ name: z.string().trim().min(2) }).parse(req.body);
   res.status(201).json(addLayer(room, name));
 });
 
 api.post("/admin/rooms/:id/members", (req, res) => {
   const { room, admin: a } = ownedRoom(req);
+  assertOpen(room);
   const input = z
     .object({
       name: z.string().trim().min(2),
@@ -141,8 +146,20 @@ api.post("/admin/rooms/:id/end", (req, res) => {
   res.json({ revoked: endProject(room, a) });
 });
 
+api.post("/admin/rooms/:id/reopen", (req, res) => {
+  const { room, admin: a } = ownedRoom(req);
+  reopenProject(room, a);
+  res.json({ ok: true });
+});
+
+api.delete("/admin/rooms/:id", (req, res) => {
+  deleteRoom(ownedRoom(req).room);
+  res.json({ ok: true });
+});
+
 api.post("/admin/rooms/:id/entries", (req, res) => {
   const { room, admin: a } = ownedRoom(req);
+  assertOpen(room);
   const input = z
     .object({ layerId: z.string(), title: z.string().trim().min(2), body: z.string().trim().min(2) })
     .parse(req.body);

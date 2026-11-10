@@ -47,6 +47,7 @@ export function createRoom(admin: Person, input: { name: string; expiresAt: stri
       expires_at: input.expiresAt,
       allowed_ais: JSON.stringify(input.allowedAis),
       created_at: nowIso(),
+      ended_at: null,
     };
     run(
       "INSERT INTO rooms (id, company_id, name, expires_at, allowed_ais, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -200,8 +201,32 @@ export function endProject(room: Room, admin: Person): number {
     room.id,
     room.company_id,
   );
+  run("UPDATE rooms SET ended_at = ? WHERE id = ?", nowIso(), room.id);
   logAccess(room.id, admin.id, null, "revoke", `ended the project and revoked ${changes} partner(s)`);
   return Number(changes);
+}
+
+/** Reopen an ended project. Partners stay revoked until they are invited again. */
+export function reopenProject(room: Room, admin: Person) {
+  run("UPDATE rooms SET ended_at = NULL WHERE id = ?", room.id);
+  logAccess(room.id, admin.id, null, "reopen", "reopened the project");
+}
+
+/** Permanently delete an ended room with its knowledge, members and audit log. */
+export function deleteRoom(room: Room) {
+  const current = get<Room>("SELECT * FROM rooms WHERE id = ?", room.id);
+  if (!current?.ended_at) throw new AppError(409, "End the project before deleting the room");
+  transaction(() => {
+    for (const table of ["audit_log", "entries", "memberships", "roles", "layers"]) {
+      run(`DELETE FROM ${table} WHERE room_id = ?`, room.id);
+    }
+    run("DELETE FROM rooms WHERE id = ?", room.id);
+  });
+}
+
+/** Ended rooms are read only: no new layers, entries or invitations. */
+export function assertOpen(room: Room) {
+  if (room.ended_at) throw new AppError(409, "This project has ended. Reopen it to make changes.");
 }
 
 export function addEntry(room: Room, admin: Person, input: { layerId: string; title: string; body: string }) {
@@ -243,7 +268,7 @@ export function decide(room: Room, admin: Person, entryId: string, approve: bool
 
 export function roomSummaries(admin: Person): RoomSummary[] {
   return all<RoomSummary>(
-    `SELECT r.id, r.name, r.expires_at AS expiresAt,
+    `SELECT r.id, r.name, r.expires_at AS expiresAt, r.ended_at AS endedAt,
             (SELECT COUNT(*) FROM memberships m WHERE m.room_id = r.id AND m.revoked_at IS NULL) AS members,
             (SELECT COUNT(*) FROM entries e WHERE e.room_id = r.id AND e.status = 'pending') AS pending
        FROM rooms r WHERE r.company_id = ? ORDER BY r.created_at`,
@@ -300,7 +325,14 @@ export function roomDetail(room: Room): RoomDetail {
     room.id,
   );
   return {
-    room: { id: room.id, name: room.name, expiresAt: room.expires_at, allowedAis: allowedAis(room), owner: owner.name },
+    room: {
+      id: room.id,
+      name: room.name,
+      expiresAt: room.expires_at,
+      endedAt: room.ended_at,
+      allowedAis: allowedAis(room),
+      owner: owner.name,
+    },
     layers: layers.map((l) => ({
       id: l.id,
       name: l.name,

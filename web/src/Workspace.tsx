@@ -74,8 +74,10 @@ export function Overview({
   onOpenRoom,
   onNav,
 }: PageProps & { me: Me; onNav: (view: "approvals" | "partners" | "audit" | "new") => void }) {
-  const { details } = useAllRooms(rooms);
-  if (!details) return <Loading />;
+  const { details: all } = useAllRooms(rooms);
+  if (!all) return <Loading />;
+  // Ended projects are archived: they keep their log but need no attention.
+  const details = all.filter((d) => !d.room.endedAt);
 
   const partners = details.flatMap((d) => d.members.filter((m) => m.isPartner && m.status === "active").map((m) => ({ d, m })));
   const partnerCompanies = new Set(partners.map((p) => p.m.company)).size;

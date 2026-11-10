@@ -21,7 +21,7 @@ import {
   Loading,
 } from "./ui";
 
-export function RoomDetailView({ roomId, onChange }: { roomId: string; onChange: () => void }) {
+export function RoomDetailView({ roomId, onChange, onDeleted }: { roomId: string; onChange: () => void; onDeleted: () => void }) {
   const [d, setD] = useState<RoomDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [panel, setPanel] = useState<"settings" | "invite" | "entry" | "layer" | null>(null);
@@ -56,6 +56,22 @@ export function RoomDetailView({ roomId, onChange }: { roomId: string; onChange:
     );
   const base = `/admin/rooms/${roomId}`;
   const toggle = (p: typeof panel) => setPanel(panel === p ? null : p);
+  const ended = d.room.endedAt !== null;
+  const endProject = () =>
+    confirm(
+      `End "${d.room.name}"?\n\nAll partners and their AIs lose access now. ${d.room.owner} keeps all approved knowledge and the audit log. You can reopen the room later, but partners must be invited again.`,
+    ) && act(() => api(`${base}/end`, { method: "POST" }), "Project ended");
+  async function deleteRoom() {
+    if (!confirm(`Delete "${d!.room.name}" for good?\n\nIts knowledge, members and audit log are removed. This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await api(base, { method: "DELETE" });
+      toast("Room deleted");
+      onDeleted();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
   const revoke = (m: MemberInfo) =>
     confirm(`Revoke access for ${m.name} (${m.company})? Their AI can no longer read this room.`) &&
     act(() => api(`${base}/members/${m.id}/revoke`, { method: "POST" }), "Access revoked");
@@ -79,7 +95,8 @@ export function RoomDetailView({ roomId, onChange }: { roomId: string; onChange:
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{d.room.name}</h1>
           <p className="mt-1 text-sm text-muted">
-            {activePartners} {activePartners === 1 ? "partner" : "partners"} · access until {fmtDay(d.room.expiresAt)}
+            {ended ? "Ended" : `${activePartners} ${activePartners === 1 ? "partner" : "partners"}`} · access until{" "}
+            {fmtDay(d.room.expiresAt)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -89,20 +106,34 @@ export function RoomDetailView({ roomId, onChange }: { roomId: string; onChange:
               {ai}
             </Chip>
           ))}
-          <Button className="ml-3" onClick={() => toggle("settings")}>
-            Settings
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() =>
-              confirm(`End the project and revoke access for all partners? ${d.room.owner} keeps all approved knowledge.`) &&
-              act(() => api(`${base}/end`, { method: "POST" }))
-            }
-          >
-            End project
-          </Button>
+          {!ended && (
+            <>
+              <Button className="ml-3" onClick={() => toggle("settings")}>
+                Settings
+              </Button>
+              <Button variant="danger" onClick={endProject}>
+                End project
+              </Button>
+            </>
+          )}
         </div>
       </header>
+
+      {ended && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-sage-50 px-6 py-4 md:px-10">
+          <Icon name="lock" className="text-bridge-900" />
+          <p className="min-w-60 flex-1 text-sm">
+            <span className="font-bold">This project ended on {fmtDay(d.room.endedAt!.slice(0, 10))}.</span> Partners and their AIs no
+            longer have access. {d.room.owner} keeps all approved knowledge and the audit log. The room is read only.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={() => act(() => api(`${base}/reopen`, { method: "POST" }), "Project reopened")}>Reopen</Button>
+            <Button variant="danger" onClick={deleteRoom}>
+              Delete room
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 px-6 py-6 md:px-10">
         <ErrorNote error={error} />
@@ -113,14 +144,16 @@ export function RoomDetailView({ roomId, onChange }: { roomId: string; onChange:
             <Section
               title="Layers"
               action={
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => toggle("layer")}>
-                    <Icon name="plus" size={15} /> Layer
-                  </Button>
-                  <Button onClick={() => toggle("entry")}>
-                    <Icon name="plus" size={15} /> Entry
-                  </Button>
-                </div>
+                !ended && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => toggle("layer")}>
+                      <Icon name="plus" size={15} /> Layer
+                    </Button>
+                    <Button onClick={() => toggle("entry")}>
+                      <Icon name="plus" size={15} /> Entry
+                    </Button>
+                  </div>
+                )
               }
             >
               {panel === "layer" && <AddLayer onAdd={(name) => act(() => api(`${base}/layers`, { body: { name } }), "Layer added")} />}
@@ -212,16 +245,18 @@ export function RoomDetailView({ roomId, onChange }: { roomId: string; onChange:
             <Section
               title="Partners"
               action={
-                <Button variant="primary" onClick={() => toggle("invite")}>
-                  <Icon name="plus" size={15} /> Invite partner
-                </Button>
+                !ended && (
+                  <Button variant="primary" onClick={() => toggle("invite")}>
+                    <Icon name="plus" size={15} /> Invite partner
+                  </Button>
+                )
               }
             >
               {panel === "invite" && <InviteForm d={d} onInvite={(body) => act(() => api(`${base}/members`, { body }))} />}
               {partners.length === 0 && <p className="text-sm text-muted">No partners yet. Invite the first one.</p>}
               <ul className="space-y-2.5">
                 {partners.map((m, i) => (
-                  <MemberCard key={m.id} m={m} solid={i === 0} roomEnd={d.room.expiresAt} onRevoke={() => revoke(m)} />
+                  <MemberCard key={m.id} m={m} solid={i === 0} roomEnd={d.room.expiresAt} onRevoke={ended ? undefined : () => revoke(m)} />
                 ))}
               </ul>
               <p className="mt-2 text-xs text-muted">
@@ -233,7 +268,7 @@ export function RoomDetailView({ roomId, onChange }: { roomId: string; onChange:
               <Section title={`${d.room.owner} team`}>
                 <ul className="space-y-2.5">
                   {team.map((m) => (
-                    <MemberCard key={m.id} m={m} roomEnd={d.room.expiresAt} onRevoke={() => revoke(m)} />
+                    <MemberCard key={m.id} m={m} roomEnd={d.room.expiresAt} onRevoke={ended ? undefined : () => revoke(m)} />
                   ))}
                 </ul>
               </Section>
@@ -261,7 +296,7 @@ export function RoomDetailView({ roomId, onChange }: { roomId: string; onChange:
   );
 }
 
-function MemberCard({ m, solid = false, roomEnd, onRevoke }: { m: MemberInfo; solid?: boolean; roomEnd: string; onRevoke: () => void }) {
+function MemberCard({ m, solid = false, roomEnd, onRevoke }: { m: MemberInfo; solid?: boolean; roomEnd: string; onRevoke?: () => void }) {
   const active = m.status === "active";
   // Partners show as their company, the customer's own people by name.
   const title = m.isPartner ? m.company : m.name;
@@ -278,7 +313,7 @@ function MemberCard({ m, solid = false, roomEnd, onRevoke }: { m: MemberInfo; so
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
         {active ? <Chip>{m.ai}</Chip> : <Badge tone={STATUS_TONE[m.status]}>{m.status}</Badge>}
-        {active && (
+        {active && onRevoke && (
           <button onClick={onRevoke} className="text-xs font-medium text-muted hover:text-blocked">
             Revoke
           </button>

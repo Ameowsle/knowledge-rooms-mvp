@@ -37,7 +37,8 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
     if (!me.isAdmin) return Promise.resolve();
     return api<RoomSummary[]>("/admin/rooms").then((list) => {
       setRooms(list);
-      setSelected((s) => s ?? list[0]?.id ?? null);
+      // Keep the open room if it still exists, otherwise fall back to the first running one.
+      setSelected((s) => (s && list.some((r) => r.id === s) ? s : ((list.find((r) => !r.endedAt) ?? list[0])?.id ?? null)));
     });
   }, [me.isAdmin]);
   useEffect(() => {
@@ -98,20 +99,40 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
               <div>
                 <h2 className={heading}>Rooms</h2>
                 <ul className="space-y-0.5">
-                  {rooms.map((r) => (
-                    <li key={r.id}>
-                      <button className={navItem(view === "rooms" && selected === r.id)} onClick={() => openRoom(r.id)}>
-                        <Icon name="folder" />
-                        <span className="min-w-0 flex-1 truncate">{r.name}</span>
-                        {count(r.pending)}
-                      </button>
-                    </li>
-                  ))}
+                  {rooms
+                    .filter((r) => !r.endedAt)
+                    .map((r) => (
+                      <li key={r.id}>
+                        <button className={navItem(view === "rooms" && selected === r.id)} onClick={() => openRoom(r.id)}>
+                          <Icon name="folder" />
+                          <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                          {count(r.pending)}
+                        </button>
+                      </li>
+                    ))}
                 </ul>
                 <button className={`${navItem(view === "new")} mt-1 text-muted`} onClick={() => setView("new")}>
                   <Icon name="plus" /> New room
                 </button>
               </div>
+
+              {rooms.some((r) => r.endedAt) && (
+                <div>
+                  <h2 className={heading}>Ended</h2>
+                  <ul className="space-y-0.5">
+                    {rooms
+                      .filter((r) => r.endedAt)
+                      .map((r) => (
+                        <li key={r.id}>
+                          <button className={`${navItem(view === "rooms" && selected === r.id)} text-muted`} onClick={() => openRoom(r.id)}>
+                            <Icon name="lock" />
+                            <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                          </button>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
             </>
           )}
 
@@ -170,7 +191,16 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
             />
           </div>
         ) : selected ? (
-          <RoomDetailView key={selected} roomId={selected} onChange={load} />
+          <RoomDetailView
+            key={selected}
+            roomId={selected}
+            onChange={load}
+            onDeleted={() => {
+              setSelected(null);
+              setView("overview");
+              load();
+            }}
+          />
         ) : (
           <p className="px-10 py-8 text-muted">No rooms yet. Create one for your first project with partners.</p>
         )}

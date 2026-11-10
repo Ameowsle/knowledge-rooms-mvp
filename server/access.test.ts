@@ -111,3 +111,21 @@ test("a room can be renamed", () => {
   rooms.updateRoom(r, { name: "Customer portal 2.0" });
   assert.ok(room("Customer portal 2.0"));
 });
+
+test("ending a project closes the room until it is reopened or deleted", () => {
+  const sandra = person("Sandra Meier");
+  rooms.endProject(room("Customer portal"), sandra);
+  assert.ok(room("Customer portal").ended_at, "the room is marked as ended");
+  assert.throws(() => rooms.assertOpen(room("Customer portal")), /has ended/);
+  assert.ok(rooms.roomSummaries(sandra).find((r) => r.name === "Customer portal")!.endedAt);
+
+  rooms.reopenProject(room("Customer portal"), sandra);
+  assert.equal(room("Customer portal").ended_at, null);
+  assert.equal(access.findGrant(person("Marco Rossi"), "Customer portal"), undefined, "partners stay revoked after reopening");
+
+  assert.throws(() => rooms.deleteRoom(room("Customer portal")), /End the project/);
+  rooms.endProject(room("Customer portal"), sandra);
+  rooms.deleteRoom(room("Customer portal"));
+  assert.equal(room("Customer portal"), undefined);
+  assert.ok(room("Admin dashboard"), "other rooms are untouched");
+});
