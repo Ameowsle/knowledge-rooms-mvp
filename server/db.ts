@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS memberships (
   access_until TEXT NOT NULL, -- YYYY-MM-DD
   revoked_at   TEXT,
   created_at   TEXT NOT NULL,
+  token        TEXT, -- secret of the invitation link, valid for this room only
   UNIQUE (room_id, person_id)
 );
 
@@ -112,6 +113,7 @@ export type Membership = {
   access_until: string;
   revoked_at: string | null;
   created_at: string;
+  token: string | null;
 };
 export type Entry = {
   id: string;
@@ -135,6 +137,9 @@ db.exec(SCHEMA);
 // Databases created before projects could be ended lack this column.
 if (!db.prepare("PRAGMA table_info(rooms)").all().some((c) => c.name === "ended_at")) {
   db.exec("ALTER TABLE rooms ADD COLUMN ended_at TEXT");
+}
+if (!db.prepare("PRAGMA table_info(memberships)").all().some((c) => c.name === "token")) {
+  db.exec("ALTER TABLE memberships ADD COLUMN token TEXT");
 }
 
 export const all = <T>(sql: string, ...params: SQLInputValue[]) =>

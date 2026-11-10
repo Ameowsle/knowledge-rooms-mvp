@@ -332,7 +332,7 @@ export function roomDetail(room: Room): RoomDetail {
   };
 }
 
-export function myContributions(person: Person) {
+export function myContributions(person: Person, roomId?: string) {
   return all<MyContribution & { owner: string; body: string }>(
     `SELECT e.id, e.title, e.body, r.name AS room, c.name AS owner, l.name AS layer,
             e.status, e.created_at AS createdAt
@@ -340,9 +340,11 @@ export function myContributions(person: Person) {
        JOIN rooms r ON r.id = e.room_id
        JOIN companies c ON c.id = r.company_id
        JOIN layers l ON l.id = e.layer_id
-      WHERE e.author_id = ?
+      WHERE e.author_id = ? AND (? IS NULL OR e.room_id = ?)
       ORDER BY e.created_at DESC`,
     person.id,
+    roomId ?? null,
+    roomId ?? null,
   );
 }
 
@@ -370,11 +372,11 @@ export function portal(person: Person, publicUrl: string): Portal {
 
 // ---------------------------------------------------------------- changes after the invitation
 
-type MemberRow = Membership & { name: string; token: string };
+type MemberRow = Membership & { name: string };
 
 function memberRow(room: Room, membershipId: string): MemberRow {
   const m = get<MemberRow>(
-    `SELECT m.*, p.name, p.token FROM memberships m JOIN people p ON p.id = m.person_id
+    `SELECT m.*, p.name FROM memberships m JOIN people p ON p.id = m.person_id
       WHERE m.id = ? AND m.room_id = ?`,
     membershipId,
     room.id,
@@ -383,10 +385,28 @@ function memberRow(room: Room, membershipId: string): MemberRow {
   return m;
 }
 
-/** The personal link an admin passes on to a partner, by email or chat. */
+/**
+ * The link an admin passes on to a partner, by email or chat. It carries a secret of this
+ * membership, so it opens this room only. The person's own link (people.token) also opens
+ * their rooms at other companies and is shown to that person alone, in the partner portal.
+ */
 export function inviteLink(room: Room, membershipId: string, publicUrl: string) {
   const m = memberRow(room, membershipId);
-  return { name: m.name, mcpUrl: `${publicUrl}/mcp/${m.token}` };
+  let token = m.token;
+  if (!token) {
+    token = newToken();
+    run("UPDATE memberships SET token = ? WHERE id = ?", token, m.id);
+  }
+  return { name: m.name, mcpUrl: `${publicUrl}/mcp/${token}` };
+}
+
+/** Who a connection link belongs to. An invitation link is limited to its room. */
+export function resolveLink(token: string): { person: Person; roomId?: string } | undefined {
+  const person = get<Person>("SELECT * FROM people WHERE token = ?", token);
+  if (person) return { person };
+  const m = get<Membership>("SELECT * FROM memberships WHERE token = ?", token);
+  if (!m) return undefined;
+  return { person: get<Person>("SELECT * FROM people WHERE id = ?", m.person_id)!, roomId: m.room_id };
 }
 
 /** Change a member's role, AI or end date without inviting them again. */
