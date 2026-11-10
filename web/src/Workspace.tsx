@@ -374,9 +374,16 @@ export function Partners({ rooms, onOpenRoom, onChange }: PageProps) {
 export function AuditLog({ rooms, onOpenRoom }: PageProps) {
   const { details } = useAllRooms(rooms);
   const [only, setOnly] = useState<"all" | "denied">("all");
-  const rows = (details ?? [])
-    .flatMap((d) => d.audit.map((a) => ({ d, a })))
+  const [roomId, setRoomId] = useState("");
+  const [company, setCompany] = useState("");
+  const all = (details ?? []).flatMap((d) =>
+    d.audit.map((a) => ({ d, a, company: d.members.find((m) => m.name === a.person)?.company ?? d.room.owner })),
+  );
+  const companies = [...new Set(all.map((r) => r.company))].sort();
+  const rows = all
     .filter((r) => only === "all" || r.a.action === "denied")
+    .filter((r) => !roomId || r.d.room.id === roomId)
+    .filter((r) => !company || r.company === company)
     .sort((x, y) => y.a.at.localeCompare(x.a.at));
   const filter = (v: typeof only, label: string) => (
     <button
@@ -389,9 +396,39 @@ export function AuditLog({ rooms, onOpenRoom }: PageProps) {
 
   return (
     <Page title="Audit log" lead="Every read, suggestion and blocked AI across your rooms.">
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex max-w-4xl flex-wrap items-center gap-2">
         {filter("all", "Everything")}
         {filter("denied", "Blocked AIs")}
+        <select
+          className={`${input} ml-2 !w-auto !py-1 text-sm`}
+          value={roomId}
+          onChange={(e) => setRoomId(e.target.value)}
+          aria-label="Filter by room"
+        >
+          <option value="">All rooms</option>
+          {rooms.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+        <select
+          className={`${input} !w-auto !py-1 text-sm`}
+          value={company}
+          onChange={(e) => setCompany(e.target.value)}
+          aria-label="Filter by company"
+        >
+          <option value="">All companies</option>
+          {companies.map((c) => (
+            <option key={c}>{c}</option>
+          ))}
+        </select>
+        <a
+          href={`/api/admin/audit.csv${roomId ? `?room=${roomId}` : ""}`}
+          className="ml-auto inline-flex items-center rounded-lg border border-stone-300 bg-white px-3.5 py-1.5 text-sm font-semibold hover:bg-sage-50"
+        >
+          Export CSV
+        </a>
       </div>
       {!details && <Skeleton />}
       {details && rows.length === 0 && (
@@ -402,8 +439,7 @@ export function AuditLog({ rooms, onOpenRoom }: PageProps) {
         </Empty>
       )}
       <ul className={`max-w-4xl divide-y divide-line rounded-xl border border-line bg-white ${rows.length === 0 ? "hidden" : ""}`}>
-        {rows.map(({ d, a }) => {
-          const company = d.members.find((m) => m.name === a.person)?.company;
+        {rows.map(({ d, a, company }) => {
           return (
             <li key={`${d.room.id}-${a.id}`} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
               <span className="nums w-28 shrink-0 font-mono text-xs text-muted">{fmtTime(a.at)}</span>
@@ -442,6 +478,21 @@ const Built = () => <Badge tone="green">In place</Badge>;
 export function Settings({ me, rooms, onPlans }: { me: Me; rooms: RoomSummary[]; onPlans: () => void }) {
   const [defaults, setDefaults] = useState(loadRoomDefaults);
   const [saved, setSaved] = useState(false);
+  // The reset exists only when the server runs as a demo (DEMO_MODE=true).
+  const [demoMode, setDemoMode] = useState(false);
+  useEffect(() => {
+    api<{ demoMode: boolean }>("/config").then(
+      (c) => setDemoMode(c.demoMode),
+      () => setDemoMode(false),
+    );
+  }, []);
+
+  async function resetDemo() {
+    if (!confirm("Reset the demo?\n\nEverything you changed is replaced by the original example, and you are signed out.")) return;
+    await api("/admin/reset", { method: "POST" });
+    await api("/logout", { method: "POST" }).catch(() => undefined);
+    location.reload();
+  }
 
   function save(e: React.FormEvent) {
     e.preventDefault();
@@ -534,6 +585,20 @@ export function Settings({ me, rooms, onPlans }: { me: Me; rooms: RoomSummary[];
               ))}
               <p className="mt-3 text-xs text-muted">Today knowledge is added to rooms by hand or through partner suggestions.</p>
             </Card>
+
+            {demoMode && (
+              <Card title="Demo data">
+                <p className="text-sm text-stone-700">
+                  Restore the Talberg Software example. Every room, partner, suggestion and personal AI link is recreated, for all demo
+                  accounts.
+                </p>
+                <div className="mt-4">
+                  <Button variant="danger" onClick={resetDemo}>
+                    Reset demo data
+                  </Button>
+                </div>
+              </Card>
+            )}
           </>
         )}
       </div>

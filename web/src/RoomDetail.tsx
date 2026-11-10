@@ -26,6 +26,8 @@ export function RoomDetailView({ roomId, onChange, onDeleted }: { roomId: string
   const [error, setError] = useState<string | null>(null);
   const [panel, setPanel] = useState<"settings" | "invite" | "entry" | "layer" | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [invite, setInvite] = useState<InviteInfo | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
 
   const load = useCallback(() => api<RoomDetail>(`/admin/rooms/${roomId}`).then(setD), [roomId]);
   useEffect(() => {
@@ -72,6 +74,17 @@ export function RoomDetailView({ roomId, onChange, onDeleted }: { roomId: string
       setError((e as Error).message);
     }
   }
+  const showInvite = (m: { name: string; role: string; ai: string; accessUntil: string }, mcpUrl: string) =>
+    setInvite({ ...m, mcpUrl, room: d.room.name, owner: d.room.owner });
+  const copyInvite = async (m: MemberInfo) => {
+    setError(null);
+    try {
+      const { mcpUrl } = await api<{ mcpUrl: string }>(`${base}/members/${m.id}/invite`);
+      showInvite(m, mcpUrl);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   const revoke = (m: MemberInfo) =>
     confirm(`Revoke access for ${m.name} (${m.company})? Their AI can no longer read this room.`) &&
     act(() => api(`${base}/members/${m.id}/revoke`, { method: "POST" }), "Access revoked");
@@ -196,15 +209,24 @@ export function RoomDetailView({ roomId, onChange, onDeleted }: { roomId: string
                           ) : (
                             <ul className="divide-y divide-line">
                               {entries.map((e) => (
-                                <li key={e.id} className="py-2.5 text-sm first:pt-0 last:pb-0">
-                                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                    <span className="font-bold">{e.title}</span>
-                                    <span className="text-xs text-muted">
-                                      {e.author} · {e.authorCompany}
-                                    </span>
-                                  </div>
-                                  <p className="mt-0.5 max-w-[75ch] text-stone-700">{e.body}</p>
-                                </li>
+                                <EntryRow
+                                  key={e.id}
+                                  e={e}
+                                  d={d}
+                                  readOnly={ended}
+                                  editing={editing === e.id}
+                                  onEdit={(on) => setEditing(on ? e.id : null)}
+                                  onSave={(body) =>
+                                    act(async () => {
+                                      await api(`${base}/entries/${e.id}`, { method: "PATCH", body });
+                                      setEditing(null);
+                                    }, "Entry updated")
+                                  }
+                                  onRemove={() =>
+                                    confirm(`Remove "${e.title}"? Partner AIs stop receiving it at once.`) &&
+                                    act(() => api(`${base}/entries/${e.id}`, { method: "DELETE" }), "Entry removed")
+                                  }
+                                />
                               ))}
                             </ul>
                           )}
@@ -252,11 +274,32 @@ export function RoomDetailView({ roomId, onChange, onDeleted }: { roomId: string
                 )
               }
             >
-              {panel === "invite" && <InviteForm d={d} onInvite={(body) => act(() => api(`${base}/members`, { body }))} />}
+              {panel === "invite" && (
+                <InviteForm
+                  d={d}
+                  onInvite={(body) =>
+                    act(async () => {
+                      const { mcpUrl } = await api<{ mcpUrl: string }>(`${base}/members`, { body });
+                      const role = d.roles.find((r) => r.id === body.roleId)?.name ?? "";
+                      showInvite({ name: body.name, role, ai: body.ai, accessUntil: body.accessUntil }, mcpUrl);
+                    }, "Partner invited")
+                  }
+                />
+              )}
+              {invite && <InviteCard invite={invite} onClose={() => setInvite(null)} />}
               {partners.length === 0 && <p className="text-sm text-muted">No partners yet. Invite the first one.</p>}
               <ul className="space-y-2.5">
                 {partners.map((m, i) => (
-                  <MemberCard key={m.id} m={m} solid={i === 0} roomEnd={d.room.expiresAt} onRevoke={ended ? undefined : () => revoke(m)} />
+                  <MemberCard
+                    key={m.id}
+                    m={m}
+                    d={d}
+                    solid={i === 0}
+                    readOnly={ended}
+                    onRevoke={() => revoke(m)}
+                    onInvite={() => copyInvite(m)}
+                    onSave={(body) => act(() => api(`${base}/members/${m.id}`, { method: "PATCH", body }), "Access updated")}
+                  />
                 ))}
               </ul>
               <p className="mt-2 text-xs text-muted">
@@ -268,7 +311,16 @@ export function RoomDetailView({ roomId, onChange, onDeleted }: { roomId: string
               <Section title={`${d.room.owner} team`}>
                 <ul className="space-y-2.5">
                   {team.map((m) => (
-                    <MemberCard key={m.id} m={m} roomEnd={d.room.expiresAt} onRevoke={ended ? undefined : () => revoke(m)} />
+                    <MemberCard
+                      key={m.id}
+                      m={m}
+                      d={d}
+
+                      readOnly={ended}
+                      onRevoke={() => revoke(m)}
+                      onInvite={() => copyInvite(m)}
+                      onSave={(body) => act(() => api(`${base}/members/${m.id}`, { method: "PATCH", body }), "Access updated")}
+                    />
                   ))}
                 </ul>
               </Section>
@@ -278,7 +330,12 @@ export function RoomDetailView({ roomId, onChange, onDeleted }: { roomId: string
       </div>
 
       <footer className="border-t border-line bg-sage-50 px-6 py-5 md:px-10">
-        <h2 className="mb-2 text-sm font-bold">Audit log</h2>
+        <div className="mb-2 flex items-center justify-between gap-4">
+          <h2 className="text-sm font-bold">Audit log</h2>
+          <a href={`/api/admin/audit.csv?room=${roomId}`} className="text-xs font-medium text-bridge-900 hover:underline">
+            Export CSV
+          </a>
+        </div>
         <ul className="max-h-56 space-y-1 overflow-y-auto text-sm">
           {d.audit.length === 0 && <li className="text-muted">No activity yet.</li>}
           {d.audit.map((a) => (
@@ -296,29 +353,244 @@ export function RoomDetailView({ roomId, onChange, onDeleted }: { roomId: string
   );
 }
 
-function MemberCard({ m, solid = false, roomEnd, onRevoke }: { m: MemberInfo; solid?: boolean; roomEnd: string; onRevoke?: () => void }) {
+type InviteInfo = { name: string; role: string; ai: string; accessUntil: string; mcpUrl: string; room: string; owner: string };
+
+/** The message an admin sends to a partner. Bridge does not send email itself yet. */
+function InviteCard({ invite, onClose }: { invite: InviteInfo; onClose: () => void }) {
+  const message = `Hi ${firstName(invite.name)},
+
+${invite.owner} invited you to the project room "${invite.room}" on Bridge as ${invite.role}.
+
+Your personal link for your own AI (${invite.ai}):
+${invite.mcpUrl}
+
+Add it as a connector in ${invite.ai}. Your AI then answers from the room, with the source, and asks you before it suggests anything back.
+
+The link is personal, so please do not share it. Access ends on ${fmtDay(invite.accessUntil)}.`;
+  const copy = (text: string, done: string) => navigator.clipboard.writeText(text).then(() => toast(done));
+
+  return (
+    <div className={`${formPanel} rise-in`}>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-sm font-bold">Invitation for {invite.name}</h3>
+        <button onClick={onClose} className="text-muted hover:text-ink" aria-label="Close invitation">
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-muted">Send this by email or chat. Bridge does not send it for you yet.</p>
+      <textarea
+        readOnly
+        rows={9}
+        value={message}
+        onFocus={(e) => e.target.select()}
+        className={`${input} mt-3 resize-none font-sans leading-relaxed`}
+      />
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="primary" onClick={() => copy(message, "Invitation copied")}>
+          Copy invitation
+        </Button>
+        <Button onClick={() => copy(invite.mcpUrl, "Link copied")}>Copy link only</Button>
+      </div>
+    </div>
+  );
+}
+
+function MemberCard({
+  m,
+  d,
+  solid = false,
+  readOnly,
+  onRevoke,
+  onInvite,
+  onSave,
+}: {
+  m: MemberInfo;
+  d: RoomDetail;
+  solid?: boolean;
+  readOnly: boolean;
+  onRevoke: () => void;
+  onInvite: () => void;
+  onSave: (body: { roleId: string; ai: string; accessUntil: string }) => void;
+}) {
+  const [edit, setEdit] = useState(false);
+  const [form, setForm] = useState({ roleId: m.roleId, ai: m.ai, accessUntil: m.accessUntil });
   const active = m.status === "active";
   // Partners show as their company, the customer's own people by name.
   const title = m.isPartner ? m.company : m.name;
   const sub = m.isPartner ? `${m.name}, ${m.role}` : [m.title, m.role].filter(Boolean).join(", ");
+  const action = "text-xs font-medium text-muted hover:text-ink hover:underline";
+
   return (
-    <li className={`flex items-center gap-3 rounded-xl border border-line bg-white px-3.5 py-3 ${active ? "" : "opacity-60"}`}>
-      <Avatar name={title} solid={solid} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-bold">{title}</div>
-        <div className="truncate text-xs text-muted">
-          {sub}
-          {active && m.accessUntil !== roomEnd && `, until ${fmtDay(m.accessUntil)}`}
+    <li className={`rounded-xl border border-line bg-white px-3.5 py-3 ${active ? "" : "opacity-60"}`}>
+      <div className="flex items-center gap-3">
+        <Avatar name={title} solid={solid} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-bold">{title}</div>
+          <div className="nums truncate text-xs text-muted">
+            {sub}
+            {active && m.accessUntil !== d.room.expiresAt && `, until ${fmtDay(m.accessUntil)}`}
+          </div>
         </div>
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1">
         {active ? <Chip>{m.ai}</Chip> : <Badge tone={STATUS_TONE[m.status]}>{m.status}</Badge>}
-        {active && onRevoke && (
-          <button onClick={onRevoke} className="text-xs font-medium text-muted hover:text-blocked">
+      </div>
+
+      {active && !readOnly && !edit && (
+        <div className="mt-2 flex gap-4 pl-12">
+          <button className={action} onClick={() => setEdit(true)}>
+            Edit
+          </button>
+          <button className={action} onClick={onInvite}>
+            Invitation
+          </button>
+          <button className="text-xs font-medium text-muted hover:text-blocked hover:underline" onClick={onRevoke}>
             Revoke
           </button>
-        )}
+        </div>
+      )}
+
+      {edit && (
+        <form
+          className="mt-3 grid gap-3 border-t border-line pt-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSave(form);
+            setEdit(false);
+          }}
+        >
+          <Field label="Role">
+            <select className={input} value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })}>
+              {d.roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Their AI">
+              <select className={input} value={form.ai} onChange={(e) => setForm({ ...form, ai: e.target.value })}>
+                {d.room.allowedAis.map((ai) => (
+                  <option key={ai}>{ai}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Access until">
+              <input
+                className={input}
+                type="date"
+                value={form.accessUntil}
+                max={d.room.expiresAt}
+                onChange={(e) => setForm({ ...form, accessUntil: e.target.value })}
+                required
+              />
+            </Field>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="primary" type="submit">
+              Save
+            </Button>
+            <Button type="button" onClick={() => setEdit(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+    </li>
+  );
+}
+
+/** One knowledge entry in a layer, with edit and remove for the owner company. */
+function EntryRow({
+  e,
+  d,
+  readOnly,
+  editing,
+  onEdit,
+  onSave,
+  onRemove,
+}: {
+  e: EntryInfo;
+  d: RoomDetail;
+  readOnly: boolean;
+  editing: boolean;
+  onEdit: (on: boolean) => void;
+  onSave: (body: { title: string; body: string; layerId: string }) => void;
+  onRemove: () => void;
+}) {
+  const [form, setForm] = useState({ title: e.title, body: e.body, layerId: e.layerId });
+  const action = "text-xs font-medium text-muted hover:text-ink hover:underline";
+
+  if (editing)
+    return (
+      <li className="py-3 first:pt-0 last:pb-0">
+        <form
+          className="grid gap-3"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            onSave(form);
+          }}
+        >
+          <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+            <Field label="Title">
+              <input
+                className={input}
+                value={form.title}
+                onChange={(ev) => setForm({ ...form, title: ev.target.value })}
+                minLength={2}
+                required
+              />
+            </Field>
+            <Field label="Layer">
+              <select className={input} value={form.layerId} onChange={(ev) => setForm({ ...form, layerId: ev.target.value })}>
+                {d.layers.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Field label="Knowledge">
+            <textarea
+              className={input}
+              rows={3}
+              value={form.body}
+              onChange={(ev) => setForm({ ...form, body: ev.target.value })}
+              minLength={2}
+              required
+            />
+          </Field>
+          <div className="flex gap-2">
+            <Button variant="primary" type="submit">
+              Save
+            </Button>
+            <Button type="button" onClick={() => onEdit(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </li>
+    );
+
+  return (
+    <li className="py-2.5 text-sm first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="font-bold">{e.title}</span>
+        <span className="text-xs text-muted">
+          {e.author} · {e.authorCompany}
+        </span>
       </div>
+      <p className="mt-0.5 max-w-[75ch] text-stone-700">{e.body}</p>
+      {!readOnly && (
+        <div className="mt-1.5 flex gap-4">
+          <button className={action} onClick={() => onEdit(true)}>
+            Edit
+          </button>
+          <button className="text-xs font-medium text-muted hover:text-blocked hover:underline" onClick={onRemove}>
+            Remove
+          </button>
+        </div>
+      )}
     </li>
   );
 }

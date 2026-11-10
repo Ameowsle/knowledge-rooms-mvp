@@ -129,3 +129,31 @@ test("ending a project closes the room until it is reopened or deleted", () => {
   assert.equal(room("Customer portal"), undefined);
   assert.ok(room("Admin dashboard"), "other rooms are untouched");
 });
+
+test("access and knowledge can be changed after the invitation", () => {
+  const r = room("Customer portal");
+  const sandra = person("Sandra Meier");
+  const detail = rooms.roomDetail(r);
+  const marco = detail.members.find((m) => m.name === "Marco Rossi")!;
+  const designer = detail.roles.find((x) => x.name === "Designer")!;
+
+  rooms.updateMembership(r, sandra, marco.id, { roleId: designer.id });
+  assert.ok(titles(access.visibleEntries(portal("Marco Rossi"))).includes("Design tokens"), "the new role applies at once");
+  assert.throws(() => rooms.updateMembership(r, sandra, marco.id, { ai: "Cursor" }), /not allowed/);
+  assert.throws(() => rooms.updateMembership(r, sandra, marco.id, { accessUntil: "2999-01-01" }), /outlast/);
+
+  const tokens = detail.entries.find((e) => e.title === "Design tokens")!;
+  rooms.updateEntry(r, sandra, tokens.id, { body: "Use the 2027 tokens." });
+  assert.equal(access.visibleEntries(portal("Marco Rossi")).find((e) => e.title === "Design tokens")!.body, "Use the 2027 tokens.");
+  rooms.deleteEntry(r, sandra, tokens.id);
+  assert.ok(!titles(access.visibleEntries(portal("Marco Rossi"))).includes("Design tokens"));
+
+  assert.match(rooms.inviteLink(r, marco.id, "https://bridge.example").mcpUrl, /^https:\/\/bridge\.example\/mcp\/.+/);
+});
+
+test("the audit log exports as CSV for the own company only", () => {
+  const csv = rooms.auditCsv(person("Sandra Meier"));
+  assert.match(csv, /^time,room,person,company,ai,action,detail/);
+  assert.match(csv, /"Customer portal","Marco Rossi","Nordwind Software","Cursor","denied"/);
+  assert.ok(!rooms.auditCsv(person("Peter Graf")).includes("Customer portal"));
+});
