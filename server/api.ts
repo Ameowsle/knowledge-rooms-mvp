@@ -103,7 +103,8 @@ api.get("/admin/rooms/:id", (req, res) => {
 
 api.patch("/admin/rooms/:id", (req, res) => {
   const { room } = ownedRoom(req);
-  updateRoom(room, z.object({ expiresAt: day.optional(), allowedAis: ais.optional() }).parse(req.body));
+  const name = z.string().trim().min(2).optional();
+  updateRoom(room, z.object({ name, expiresAt: day.optional(), allowedAis: ais.optional() }).parse(req.body));
   res.json({ ok: true });
 });
 

@@ -116,7 +116,8 @@ export function addLayer(room: Room, name: string): Layer {
   });
 }
 
-export function updateRoom(room: Room, input: { expiresAt?: string; allowedAis?: string[] }) {
+export function updateRoom(room: Room, input: { name?: string; expiresAt?: string; allowedAis?: string[] }) {
+  if (input.name) run("UPDATE rooms SET name = ? WHERE id = ?", input.name.trim(), room.id);
   if (input.expiresAt) run("UPDATE rooms SET expires_at = ? WHERE id = ?", input.expiresAt, room.id);
   if (input.allowedAis) run("UPDATE rooms SET allowed_ais = ? WHERE id = ?", JSON.stringify(input.allowedAis), room.id);
 }
